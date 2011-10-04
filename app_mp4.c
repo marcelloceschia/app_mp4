@@ -21,6 +21,8 @@
  * \ingroup applications
  */
 
+#define AST_MODULE "app_mp4"
+
 #include <asterisk.h>
 #include <mp4.h> 
 #include <stdlib.h>
@@ -189,7 +191,7 @@ static void mp4_rtp_write_video_frame(struct mp4track *t, int samples)
 static int mp4_rtp_write_video(struct mp4track *t, struct ast_frame *f, int payload, bool intra, int skip, const unsigned char * prependBuffer, int prependLength)
 {
 	/* rtp mark */
-	const bool mBit = f->subclass & 0x1;
+	const bool mBit = f->subclass.codec & 0x1;
 
 	/* If it's the first packet of a new frame */
 	if (t->first) {
@@ -293,7 +295,7 @@ static void mp4_send_h264_sei(struct mp4rtp *p)
 
 	/* Set type */
 	f->frametype = p->frameType;
-	f->subclass = p->frameSubClass;
+	f->subclass.codec = p->frameSubClass;
 
 	f->delivery.tv_usec = 0;
 	f->delivery.tv_sec = 0;
@@ -452,7 +454,7 @@ static int mp4_rtp_read(struct mp4rtp *p)
 
 	/* Set type */
 	f->frametype = p->frameType;
-	f->subclass = p->frameSubClass;
+	f->subclass.codec = p->frameSubClass;
 
 	f->delivery.tv_usec = 0;
 	f->delivery.tv_sec = 0;
@@ -463,7 +465,7 @@ static int mp4_rtp_read(struct mp4rtp *p)
 	if (f->frametype == AST_FRAME_VIDEO)
 	{
 		/* Set mark bit */
-		f->subclass |= last;
+		f->subclass.codec |= last;
 		/* If it's the first packet of the frame */
 		if (first)
 			/* Set number of samples */
@@ -519,7 +521,7 @@ static int mp4_rtp_read(struct mp4rtp *p)
 	return next;
 }
 
-static int mp4_play(struct ast_channel *chan, void *data)
+static int mp4_play(struct ast_channel *chan, const char *data)
 {
 	struct ast_module_user *u = NULL;
 	struct mp4rtp audio = { chan, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ,0 };
@@ -785,7 +787,7 @@ static int mp4_play(struct ast_channel *chan, void *data)
 
 					/* Get DTMF char */
 					char dtmf[2];
-					dtmf[0] = f->subclass;
+					dtmf[0] = f->subclass.codec;
 					dtmf[1] = 0;
 
 					/* Check if it's in the stop char digits */
@@ -812,7 +814,7 @@ static int mp4_play(struct ast_channel *chan, void *data)
 					/* Check for dtmf extension in context */
 					} else if (ast_exists_extension(chan, chan->context, dtmf, 1, NULL)) {
 						/* Set extension to jump */
-						res = f->subclass;
+						res = f->subclass.codec;
 						/* Clean DMTF input */
 						strcpy(dtmfBuffer,dtmf);
 						/* End */
@@ -882,7 +884,7 @@ clean:
 	return res;
 }
 
-static int mp4_save(struct ast_channel *chan, void *data)
+static int mp4_save(struct ast_channel *chan, const char *data)
 {
 	struct ast_module_user *u = NULL;
 	struct ast_frame *f = NULL;
@@ -904,7 +906,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 		return -1;
 
 	/* Check for params */
-	params = strchr(data,'|');
+	params = strchr(data,',');
 
 	/* If there are params */
 	if (params)
@@ -967,7 +969,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 			if (audio == -1)
 			{
 				/* Check codec */
-				if (f->subclass & AST_FORMAT_ULAW)
+				if (f->subclass.codec & AST_FORMAT_ULAW)
 				{
 					/* Create audio track */
 					audio = MP4AddAudioTrack(mp4, 8000, 0, MP4_ULAW_AUDIO_TYPE);
@@ -982,7 +984,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 					type = 0;
 					audio_payload = 0;
 					MP4SetHintTrackRtpPayload(mp4, hintAudio, "PCMU", &type, 0, NULL, 1, 0);
-				} else if (f->subclass & AST_FORMAT_ALAW) {
+				} else if (f->subclass.codec & AST_FORMAT_ALAW) {
 					/* Create audio track */
 					audio = MP4AddAudioTrack(mp4, 8000, 0, MP4_ALAW_AUDIO_TYPE);
 					/* Set channel and sample properties */
@@ -996,7 +998,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 					type = 8;
 					audio_payload = 0;
 					MP4SetHintTrackRtpPayload(mp4, hintAudio, "PCMA", &type, 0, NULL, 1, 0);
-				} else if (f->subclass & AST_FORMAT_AMRNB) {
+				} else if (f->subclass.codec & AST_FORMAT_AMRNB) {
 					/* Create audio track */
 					audio = MP4AddAmrAudioTrack(mp4, 8000, 0, 0, 1, 0); /* Should check framesPerSample*/
 					/* Create audio hint track */
@@ -1038,7 +1040,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 			int first = 0;
 
 			/* Check codec */
-			if (f->subclass & AST_FORMAT_H263)
+			if (f->subclass.codec & AST_FORMAT_H263)
 			{
 				/* Check if it's an intra frame */
 				intra = (frame[1] & 0x10) != 0;
@@ -1048,7 +1050,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 					first = 1;
 				/* payload length */
 				video_payload = 4;
-			} else if (f->subclass & AST_FORMAT_H263_PLUS) {
+			} else if (f->subclass.codec & AST_FORMAT_H263_PLUS) {
 				/* Check if it's an intra frame */
 				const unsigned char p = frame[0] & 0x04;
 				const unsigned char v = frame[0] & 0x02;
@@ -1070,7 +1072,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 					prependBuffer = (unsigned char*)"\0\0";
 					prependLength = 2;
 				}
-			} else if (f->subclass & AST_FORMAT_H264) {
+			} else if (f->subclass.codec & AST_FORMAT_H264) {
 				/* Get packet type */
 				const unsigned char nal = frame[0];
 				const unsigned char type = nal & 0x1f;
@@ -1114,7 +1116,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 			if (video == -1)
 			{
 				/* Check codec */
-				if (f->subclass & AST_FORMAT_H263)
+				if (f->subclass.codec & AST_FORMAT_H263)
 				{
 					/* Create video track */
 					video = MP4AddH263VideoTrack(mp4, 90000, 0, 176, 144, 0, 0, 0, 0);
@@ -1123,7 +1125,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 					/* Set payload type for hint track */
 					type = 34;
 					MP4SetHintTrackRtpPayload(mp4, hintVideo, "H263", &type, 0, NULL, 1, 0);
-				} else if (f->subclass & AST_FORMAT_H263_PLUS) {
+				} else if (f->subclass.codec & AST_FORMAT_H263_PLUS) {
 					/* Create video track */
 					video = MP4AddH263VideoTrack(mp4, 90000, 0, 176, 144, 0, 0, 0, 0);
 					/* Create video hint track */
@@ -1131,7 +1133,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 					/* Set payload type for hint track */
 					type = 96;
 					MP4SetHintTrackRtpPayload(mp4, hintVideo, "H263-1998", &type, 0, NULL, 1, 0);
-				} else if (f->subclass & AST_FORMAT_H264) {
+				} else if (f->subclass.codec & AST_FORMAT_H264) {
 					/* Should parse video packet to get this values */
 					unsigned char AVCProfileIndication 	= 2;
 					unsigned char AVCLevelIndication	= 1;
@@ -1172,7 +1174,7 @@ static int mp4_save(struct ast_channel *chan, void *data)
 
 		} else if (f->frametype == AST_FRAME_DTMF) {
 			/* If it's the dtmf param */
-			if (params && strchr(params,f->subclass))
+			if (params && strchr(params,f->subclass.codec))
 			{
 				/* free frame */
 				ast_frfree(f);
